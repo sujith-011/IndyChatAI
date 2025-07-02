@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IndySafeChat - Emergency Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <h1 class="logo">🚨 IndySafeChat</h1>
+        <p class="subtitle">How can I assist you today?</p>
+
+        <div class="actions">
+            <button onclick="setQuickMessage('🚑 Medical Emergency reported!')">🚑 Emergency</button>
+            <button onclick="setQuickMessage('📍 My location needs help!')">📍 Share Location</button>
+            <button onclick="setQuickMessage('🔍 Need public safety info')">🔍 Safety Info</button>
+        </div>
+
+        <div class="chat-messages" id="chatMessages"></div>
+
+        <div class="chat-area">
+            <input type="text" id="location" placeholder="📍 Obtaining location..." readonly />
+            <input type="text" id="message" placeholder="✍️ Describe your concern..." />
+            <button id="sendBtn">Send</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const locationInput = document.getElementById("location");
+
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+
+                    try {
+                        const res = await fetch(`https://us1.locationiq.com/v1/reverse?key=pk.11ae6e4971a8d18ac285dbf67f61e1b8&lat=${lat}&lon=${lon}&format=json`);
+                        const data = await res.json();
+                        locationInput.value = data.display_name;
+                    } catch (err) {
+                        locationInput.value = "📍 Location fetch failed";
+                    }
+                },
+                (err) => {
+                    console.error("Geolocation error:", err);
+                    locationInput.value = "📍 Location unavailable";
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+
+            document.getElementById("sendBtn").addEventListener("click", sendMessage);
+        });
+
+        function setQuickMessage(text) {
+            document.getElementById("message").value = text;
+        }
+
+        function addMessage(content, isUser = true) {
+                const msgDiv = document.createElement("div");
+                msgDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+
+                if (isUser) {
+                    // Display user message safely as plain text
+                    const pre = document.createElement("pre");
+                    pre.textContent = content;
+                    msgDiv.appendChild(pre);
+                } else {
+                    // Allow rendering formatted HTML (like <br>, emojis, bullet points) from bot
+                    msgDiv.innerHTML = `<div>${content}</div>`;
+                }
+
+                const chatBox = document.getElementById("chatMessages");
+                chatBox.appendChild(msgDiv);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+
+
+        async function sendMessage() {
+            const messageInput = document.getElementById("message");
+            const locationInput = document.getElementById("location");
+            const message = messageInput.value.trim();
+            const location = locationInput.value.trim();
+
+            if (!message) return;
+
+            addMessage(message, true);
+            messageInput.value = "";
+
+            const loading = document.createElement("div");
+            loading.className = "message bot-message";
+            loading.innerHTML = `<pre>⏳ Bot is typing...</pre>`;
+            document.getElementById("chatMessages").appendChild(loading);
+
+            try {
+                const res = await fetch("/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message, location })
+                });
+
+                const data = await res.json();
+                loading.remove();
+                addMessage(data.response || "⚠️ No response from bot.", false);
+            } catch (err) {
+                loading.remove();
+                addMessage("⚠️ Network error. Please try again later.", false);
+            }
+        }
+    </script>
+</body>
+
+</html>
